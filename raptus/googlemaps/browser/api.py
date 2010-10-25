@@ -12,6 +12,15 @@ class Api(ViewletBase):
     """
     index = ViewPageTemplateFile('api.pt')
     
+    def update(self):
+        """ We need to override this update method because a loop is produced
+            if self.portal_state.navigation_root_url() is called.
+            Reproduction: context in draft state called from a anonymous user. 
+        """
+        self.portal_state = component.getMultiAdapter((self.context, self.request),
+                                            name=u'plone_portal_state')
+        self.site_url = self.portal_state.portal_url()
+    
     @property
     @memoize
     def url(self):
@@ -32,3 +41,5 @@ class Api(ViewletBase):
             portal = portal_state.portal()
             key = portal.getProperty('google_api_key', '')
         return 'http://maps.google.com/maps?file=api&v=2&sensor=false&key=%s' % key
+
+
