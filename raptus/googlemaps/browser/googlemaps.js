@@ -1,423 +1,587 @@
-/*
- ### jQuery Google Maps Plugin v1.01 ###
- * Home: http://www.mayzes.org/googlemaps.jquery.html
- * Code: http://www.mayzes.org/js/jquery.googlemaps1.01.js
- * Date: 2010-01-14 (Thursday, 14 Jan 2010)
- * 
- * Dual licensed under the MIT and GPL licenses.
- *   http://www.gnu.org/licenses/gpl.html
- *   http://www.opensource.org/licenses/mit-license.php
- ###
-*/
+/**
+ * jQuery goMap
+ *
+ * @url   http://www.pittss.lv/jquery/gomap/
+ * @author  Jevgenijs Shtrauss <pittss@gmail.com>
+ * @version 1.2.2
+ * This software is released under the MIT License <http://www.opensource.org/licenses/mit-license.php>
+ */
+
 (function($) {
-  jQuery.fn.googleMaps = function(options) {
-  
-  	if (!window.GBrowserIsCompatible || !GBrowserIsCompatible())  {
-  	   return this;
-  	}
-  
-  	// Fill default values where not set by instantiation code
-  	var opts = $.extend({}, $.googleMaps.defaults, options);
-  	
-  	//$.fn.googleMaps.includeGoogle(opts.key, opts.sensor);
-  	return this.each(function() {
-  		// Create Map
-  		$.googleMaps.gMap = new GMap2(this, opts);
-  		$.googleMaps.mapsConfiguration(opts);
-  	});
+  var geocoder = new google.maps.Geocoder();
+
+  function MyOverlay(map) { this.setMap(map); };
+  MyOverlay.prototype = new google.maps.OverlayView();
+  MyOverlay.prototype.onAdd = function() { };
+  MyOverlay.prototype.onRemove = function() { };
+  MyOverlay.prototype.draw = function() { };
+
+  $.fn.goMap = function(options) {
+    var opts = $.extend({}, $.goMap.defaults, options);
+
+    return this.each(function() {
+      $.goMap.mapId    = this;
+      $.goMap.opts     = opts;
+      $.goMap.markers    = [];
+      $.goMap.tmpMarkers   = [];
+      $.goMap.centerLatLng = null;
+      $.goMap.init(opts);
+    });
   };
   
-  $.googleMaps = {
-  	mapsConfiguration: function(opts) {
-  		// GEOCODE
-  		if ( opts.geocode ) {
-  			geocoder = new GClientGeocoder();
-  			geocoder.getLatLng(opts.geocode, function(center) {
-  				if (!center) {
-  					alert(address + " not found");
-  				}
-  				else {
-      	      		$.googleMaps.gMap.setCenter(center, opts.depth);
-  					$.googleMaps.latitude = center.x;
-  					$.googleMaps.longitude = center.y;
-  				}
+
+  $.goMap = {
+    defaults: {
+      address:        '', // Street, City, Country
+      latitude:       56.9,
+      longitude:        24.1,
+      zoom:         4,
+      delay:          500,
+      hideByClick:      true,
+      oneInfoWindow:      true,
+      prefixId:       'gomarker',
+        navigationControl:    true, // Show or hide navigation control
+      navigationControlOptions: {
+        position:     'TOP_LEFT', // TOP, TOP_LEFT, TOP_RIGHT, BOTTOM, BOTTOM_LEFT, BOTTOM_RIGHT, LEFT, RIGHT
+        style:        'DEFAULT' // DEFAULT, ANDROID, SMALL, ZOOM_PAN
+      },
+        mapTypeControl:     true, // Show or hide map control
+      mapTypeControlOptions:  {
+        position:       'TOP_RIGHT', // TOP, TOP_LEFT, TOP_RIGHT, BOTTOM, BOTTOM_LEFT, BOTTOM_RIGHT, LEFT, RIGHT
+        style:        'DEFAULT' // DEFAULT, DROPDOWN_MENU, HORIZONTAL_BAR
+      },
+        scaleControl:       false, // Show or hide scale
+      scrollwheel:      true, // Mouse scroll whell
+        directions:       false,
+        directionsResult:     null,
+      disableDoubleClickZoom: false,
+      streetViewControl:    false,
+      markers:        [],
+      maptype:        'HYBRID', // Map type - HYBRID, ROADMAP, SATELLITE, TERRAIN
+      html_prepend:     '<div class=gomapMarker>',
+      html_append:      '</div>',
+      addMarker:        false
+    },
+
+    map:      null,
+    count:      0,
+    markers:    [],
+    tmpMarkers:   [],
+    bounds:     null,
+    overlay:    null,
+    mapId:      null,
+    opts:     null,
+    centerLatLng: null,
+
+    init: function(opts) {
+      if (opts.address)
+        $.goMap.geocode(opts.address, true);
+
+      else if (opts.latitude != this.defaults.latitude && opts.longitude != this.defaults.longitude)
+        this.centerLatLng = new google.maps.LatLng(opts.latitude,opts.longitude);
+
+      else if ($.isArray(opts.markers) && opts.markers.length > 0) {
+        if (opts.markers[0].address)
+          $.goMap.geocode(opts.markers[0].address, true);
+        else
+          this.centerLatLng = new google.maps.LatLng(opts.markers[0].latitude,opts.markers[0].longitude);
+      }
+      else
+        this.centerLatLng = new google.maps.LatLng(opts.latitude,opts.longitude);
+
+      var myOptions = {
+        center:           this.centerLatLng,
+        disableDoubleClickZoom: opts.disableDoubleClickZoom,
+            mapTypeControl:       opts.mapTypeControl,
+        streetViewControl:    opts.streetViewControl,
+        mapTypeControlOptions:  {
+          position:       eval('google.maps.ControlPosition.' + opts.mapTypeControlOptions.position.toUpperCase()),
+          style:        eval('google.maps.MapTypeControlStyle.' + opts.mapTypeControlOptions.style.toUpperCase())
+        },
+        mapTypeId:          eval('google.maps.MapTypeId.' + opts.maptype.toUpperCase()),
+            navigationControl:    opts.navigationControl,
+        navigationControlOptions: {
+          position:       eval('google.maps.ControlPosition.' + opts.navigationControlOptions.position.toUpperCase()),
+          style:        eval('google.maps.NavigationControlStyle.' + opts.navigationControlOptions.style.toUpperCase())
+        },
+            scaleControl:       opts.scaleControl,
+            scrollwheel:        opts.scrollwheel,
+        zoom:           opts.zoom
+      };
+
+      $.goMap.map   = new google.maps.Map(this.mapId, myOptions);
+      $.goMap.overlay = new MyOverlay($.goMap.map);
+
+      for (var j = 0; j < opts.markers.length; j++)
+        this.createMarker(opts.markers[j]);
+
+      if (opts.addMarker == true || opts.addMarker == 'multi') {
+        google.maps.event.addListener($.goMap.map, 'click', function(event) {
+          var options = {
+            position:  event.latLng,
+            draggable: true
+          };
+          var marker = $.goMap.createMarker(options);
+
+          google.maps.event.addListener(marker, 'dblclick', function(event) {
+            marker.setMap(null);
+            $.goMap.removeMarker(marker.id);
+          });
+
         });
-  		}
-  		else {
-  			// Latitude & Longitude Center Point
-  			var center 	= $.googleMaps.mapLatLong(opts.latitude, opts.longitude);
-  			// Set the center of the Map with the new Center Point and Depth
-  			$.googleMaps.gMap.setCenter(center, opts.depth);
-  		}
-  		
-  		// POLYLINE
-  		if ( opts.polyline )
-  			// Draw a PolyLine on the Map
-  			$.googleMaps.gMap.addOverlay($.googleMaps.mapPolyLine(opts.polyline));
-  		// GEODESIC 
-  		if ( opts.geodesic ) {
-  			$.googleMaps.mapGeoDesic(opts.geodesic);
-  		}
-  		// PAN
-  		if ( opts.pan ) {
-  			// Set Default Options
-  			opts.pan = $.googleMaps.mapPanOptions(opts.pan);
-  			// Pan the Map
-  			window.setTimeout(function() {
-  				$.googleMaps.gMap.panTo($.googleMaps.mapLatLong(opts.pan.panLatitude, opts.pan.panLongitude));
-  			}, opts.pan.timeout);
-  		}
-  		
-  		// LAYER
-  		if ( opts.layer )
-  			// Set the Custom Layer
-  			$.googleMaps.gMap.addOverlay(new GLayer(opts.layer));
-  		
-  		// MARKERS
-  		if ( opts.markers )
-  			$.googleMaps.mapMarkers(center, opts.markers);
+      }
+      else if (opts.addMarker == 'single') {
+        google.maps.event.addListener($.goMap.map, 'click', function(event) {
+          if(!$.goMap.singleMarker) {
+            var options = {
+              position:  event.latLng,
+              draggable: true
+            };
+            var marker = $.goMap.createMarker(options);
+
+            $.goMap.singleMarker = true;
+
+            google.maps.event.addListener(marker, 'dblclick', function(event) {
+              marker.setMap(null);
+              $.goMap.removeMarker(marker.id);
+              $.goMap.singleMarker = false;
+            });
+          }
+        });
+      }
+    },
+
+    getMap: function() {
+       return $.goMap.map;
+    },
+
+    setMap: function(options) {
+      delete options.mapTypeId;
+
+      if (options.address) {
+        $.goMap.geocode(options.address, true);
+        delete options.address;
+      }
+      else if (options.latitude && options.longitude) {
+        options.center = new google.maps.LatLng(options.latitude,options.longitude);
+        delete options.longitude;
+        delete options.latitude;
+      }
+
+      if(options.mapTypeControlOptions && options.mapTypeControlOptions.position)
+        options.mapTypeControlOptions.position = eval('google.maps.ControlPosition.' + options.mapTypeControlOptions.position.toUpperCase());
+
+      if(options.mapTypeControlOptions && options.mapTypeControlOptions.style)
+        options.mapTypeControlOptions.style = eval('google.maps.MapTypeControlStyle.' + options.mapTypeControlOptions.style.toUpperCase());
+
+      if(options.navigationControlOptions && options.navigationControlOptions.position)
+        options.navigationControlOptions.position = eval('google.maps.ControlPosition.' + options.navigationControlOptions.position.toUpperCase());
+
+      if(options.navigationControlOptions && options.navigationControlOptions.style)
+        options.navigationControlOptions.style = eval('google.maps.NavigationControlStyle.' + options.navigationControlOptions.style.toUpperCase());
+
+      $.goMap.map.setOptions(options);
+    },
+
+    createListener: function(type, event, data) {
+      var target;
+
+      if(typeof type != 'object')
+        type = {type:type};
+
+      if(type.type == 'map')
+        target = $.goMap.map;
+      else if(type.type == 'marker' && type.marker)
+        target = $(this.mapId).data(type.marker);
+      else if(type.type == 'info' && type.marker)
+        target = $(this.mapId).data(type.marker + 'info');
+
+      if(target)
+        return google.maps.event.addListener(target, event, data);
+      else if((type.type == 'marker' || type.type == 'info') && $.goMap.getMarkerCount() != $.goMap.getTmpMarkerCount())
+        setTimeout(function() {
+          $.goMap.createListener(type, event, data);
+        }, this.opts.delay);
+    },
+
+    removeListener: function(listener) {
+      google.maps.event.removeListener(listener);
+    },
+
+    geocode: function(address, setCenter, options) {
+      setTimeout(function() {
+        geocoder.geocode({'address': address}, function(results, status) {
+
+              if (status == google.maps.GeocoderStatus.OK && setCenter)
+            $.goMap.map.setCenter(results[0].geometry.location);
+
+          if (status == google.maps.GeocoderStatus.OK && options && options.markerId)
+            options.markerId.setPosition(results[0].geometry.location);
+
+          else if (status == google.maps.GeocoderStatus.OK && options) {
+            options.position = results[0].geometry.location;
+            var cmarker = new google.maps.Marker(options);
+
+            if (options.html) {
+              if (!options.html.content && !options.html.ajax && !options.html.id)
+                options.html = { content:options.html };
+              else if (!options.html.content)
+                options.html.content = null;
+
+              $.goMap.setInfoWindow(cmarker, options.html);
+            }
+            $.goMap.addMarker(cmarker);
+            return cmarker;
+          }
+
+          else if(status == google.maps.GeocoderStatus.OVER_QUERY_LIMIT) {
+            $.goMap.geocode(address, false, options);
+          }
+            });
+      }, this.opts.delay);
+    },
+
+    setInfoWindow: function(marker, html) {
+      html.content    = this.opts.html_prepend + html.content + this.opts.html_append;
+      var infowindow  = new google.maps.InfoWindow(html);
+      infowindow.show = false;
+
+      $(this.mapId).data(marker.id + 'info',infowindow);
+
+      if (html.popup) {
+        $.goMap.openWindow(infowindow, marker, html);
+        infowindow.show = true;
+      }
+
+      google.maps.event.addListener(marker, 'click', function() {
+        if (infowindow.show && $.goMap.opts.hideByClick) {
+          infowindow.close();
+          infowindow.show = false;
+        }
+        else {
+          $.goMap.openWindow(infowindow, marker, html);
+          infowindow.show = true;
+        }
+      });
+    },
+
+    openWindow: function(infowindow, marker, html) {
+      if($.goMap.opts.oneInfoWindow)
+        $.goMap.clearInfo();
+
+      if (html.ajax) {
+        infowindow.open(this.map, marker);
+        $.ajax({
+          url: html.ajax,
+          success: function(html) {
+            infowindow.setContent(html);
+          }
+        });
+      }
+      else if (html.id) {
+        infowindow.setContent($(html.id).html());
+        infowindow.open(this.map, marker);
+      }
+      else
+        infowindow.open(this.map, marker);
+    },
+
+    clearInfo: function() {
+      for (var i in $.goMap.markers) {
+        var info = $(this.mapId).data($.goMap.markers[i] + 'info');
+        if(info) {
+          info.close();
+          info.show = false;
+        }
+      }
+    },
+
+    getInfo: function(id, hideDiv) {
+       var info = $(this.mapId).data(id + 'info').getContent();
+      if(hideDiv)
+        return $(info).html();
+      else
+        return info;
+    },
+
+    setInfo: function(id, text) {
+      var info = $(this.mapId).data(id + 'info');
+
+      if(typeof text == 'object') {
+        info.setOptions(text);
+      }
+      else
+        info.setContent(text);
+    },
+
+    getBounds: function() {
+      return $.goMap.map.getBounds();
+    },
+
+    fitBounds: function(type, markers) {
+
+      if($.goMap.getMarkerCount() != $.goMap.getTmpMarkerCount())
+        setTimeout(function() {
+            $.goMap.fitBounds(type, markers);
+          }, this.opts.delay);
+      else {
+
+        $.goMap.bounds = new google.maps.LatLngBounds();
+
+        if(!type || (type && type == 'all')) {
+          for (var i in $.goMap.markers) {
+            $.goMap.bounds.extend($(this.mapId).data($.goMap.markers[i]).position);
+          }
+        }
+        else if (type && type == 'visible') {
+          for (var i in $.goMap.markers) {
+            if($.goMap.getVisibleMarker($.goMap.markers[i]))
+              $.goMap.bounds.extend($(this.mapId).data($.goMap.markers[i]).position);
+          }
   
-  		// CONTROLS
-  		if ( opts.controls.type || opts.controls.zoom ||  opts.controls.mapType ) {
-  			$.googleMaps.mapControls(opts.controls);
-  		}
-  		else {
-  			if ( !opts.controls.hide ) 
-  				$.googleMaps.gMap.setUIToDefault();
-  		}
-      
-      // MAP TYPE
-      if ( opts.type )
-        $.googleMaps.gMap.setMapType($.googleMaps.mapTypeControl(opts.type));
-  		
-  		// SCROLL
-  		if ( opts.scroll ) 
-  			$.googleMaps.gMap.enableScrollWheelZoom();
-  		else if ( !opts.scroll )
-  			$.googleMaps.gMap.disableScrollWheelZoom();
-  		
-  		// LOCAL SEARCH
-  		if ( opts.controls.localSearch )
-  			$.googleMaps.gMap.enableGoogleBar();
-  		else 
-  			$.googleMaps.gMap.disableGoogleBar();
-  
-  		// FEED (RSS/KML)
-  		if ( opts.feed ) 
-  			$.googleMaps.gMap.addOverlay(new GGeoXml(opts.feed));
-  		
-  		// TRAFFIC INFO
-  		if ( opts.trafficInfo ) {
-  			var trafficOptions = {incidents:true};
-  			trafficInfo = new GTrafficOverlay(trafficOptions);
-  			$.googleMaps.gMap.addOverlay(trafficInfo);	
-  		}
-  		
-  		// DIRECTIONS
-  		if ( opts.directions ) {
-  			$.googleMaps.directions = new GDirections($.googleMaps.gMap, opts.directions.panel);
-    			$.googleMaps.directions.load(opts.directions.route);
-  		}
-  		
-  		if ( opts.streetViewOverlay ) {
-  			svOverlay = new GStreetviewOverlay();
-      		$.googleMaps.gMap.addOverlay(svOverlay);	
-  		}
-  	},
-  	mapGeoDesic: function(options) {
-  		// Default GeoDesic Options
-  		geoDesicDefaults = {
-  			startLatitude: 	37.4419,
-  			startLongitude: -122.1419,
-  			endLatitude:	37.4519,
-  			endLongitude:	-122.1519,
-  			color: 			'#ff0000',
-  			pixels: 		2,
-  			opacity: 		10
-  		}
-  		// Merge the User & Default Options
-  		options = $.extend({}, geoDesicDefaults, options);
-  		var polyOptions = {geodesic:true};
-  		var polyline = new GPolyline([ 
-  			new GLatLng(options.startLatitude, options.startLongitude),
-  			new GLatLng(options.endLatitude, options.endLongitude)], 
-  			options.color, options.pixels, options.opacity, polyOptions
-  		);
-  		$.googleMaps.gMap.addOverlay(polyline);
-  	},
-  	localSearchControl: function(options) {
-  		var controlLocation = $.googleMaps.mapControlsLocation(options.location);
-  		$.googleMaps.gMap.addControl(new $.googleMaps.gMap.LocalSearch(), new GControlPosition(controlLocation, new GSize(options.x,options.y)));
-  	},
-  	getLatitude: function() {
-  		return $.googleMaps.latitude;
-  	},
-  	getLongitude: function() {
-  		return $.googleMaps.longitude;
-  	},
-  	directions: {},
-  	latitude: '',
-  	longitude: '',
-  	latlong: {},
-  	maps: {},
-  	marker: {},
-  	gMap: {},
-  	defaults: {
-  	// Default Map Options
-  		latitude: 	37.4419,
-  		longitude: 	-122.1419,
-  		depth: 		13,
-  		scroll: 	true,
-  		trafficInfo: false,
-  		streetViewOverlay: false,
-  		controls: {
-  			hide: false,
-  			localSearch: false
-  		},
-  		layer:		null
-  	},
-  	mapPolyLine: function(options) {
-  		// Default PolyLine Options
-  		polylineDefaults = {
-  			startLatitude: 	37.4419,
-  			startLongitude: -122.1419,
-  			endLatitude:	37.4519,
-  			endLongitude:	-122.1519,
-  			color: 			'#ff0000',
-  			pixels: 		2
-  		}
-  		// Merge the User & Default Options
-  		options = $.extend({}, polylineDefaults, options);
-  		//Return the New Polyline
-  		return new GPolyline([
-  			$.googleMaps.mapLatLong(options.startLatitude, options.startLongitude),
-  			$.googleMaps.mapLatLong(options.endLatitude, options.endLongitude)], 
-  			options.color, 
-  			options.pixels
-  		);
-  	},
-  	mapLatLong: function(latitude, longitude) {
-  		// Returns Latitude & Longitude Center Point
-  		return new GLatLng(latitude, longitude);
-  	},
-  	mapPanOptions: function(options) {
-  		// Returns Panning Options
-  		var panDefaults = {
-  			panLatitude:	37.4569, 	
-  			panLongitude:	-122.1569,
-  			timeout: 		0
-  		}
-  		return options = $.extend({}, panDefaults, options);
-  	},
-  	mapMarkersOptions: function(icon) {
-  		//Define an icon
-  		var gIcon = new GIcon(G_DEFAULT_ICON);	
-  		if ( icon.image ) 
-  			// Define Icons Image
-  			gIcon.image = icon.image;
-  		if ( icon.shadow )
-  			// Define Icons Shadow
-  			gIcon.shadow = icon.shadow;
-  		if ( icon.iconSize )
-  			// Define Icons Size
-  			gIcon.iconSize = new GSize(icon.iconSize);
-  		if ( icon.shadowSize )
-  			// Define Icons Shadow Size
-  			gIcon.shadowSize = new GSize(icon.shadowSize);
-  		if ( icon.iconAnchor )
-  			// Define Icons Anchor
-  			gIcon.iconAnchor = new GPoint(icon.iconAnchor);
-  		if ( icon.infoWindowAnchor )
-  			// Define Icons Info Window Anchor
-  			gIcon.infoWindowAnchor = new GPoint(icon.infoWindowAnchor);
-  		if ( icon.dragCrossImage ) 
-  			// Define Drag Cross Icon Image
-  			gIcon.dragCrossImage = icon.dragCrossImage;
-  		if ( icon.dragCrossSize )
-  			// Define Drag Cross Icon Size
-  			gIcon.dragCrossSize = new GSize(icon.dragCrossSize);
-  		if ( icon.dragCrossAnchor )
-  			// Define Drag Cross Icon Anchor
-  			gIcon.dragCrossAnchor = new GPoint(icon.dragCrossAnchor);
-  		if ( icon.maxHeight )
-  			// Define Icons Max Height
-  			gIcon.maxHeight = icon.maxHeight;
-  		if ( icon.PrintImage )
-  			// Define Print Image
-  			gIcon.PrintImage = icon.PrintImage;
-  		if ( icon.mozPrintImage )
-  			// Define Moz Print Image
-  			gIcon.mozPrintImage = icon.mozPrintImage;
-  		if ( icon.PrintShadow )
-  			// Define Print Shadow
-  			gIcon.PrintShadow = icon.PrintShadow;
-  		if ( icon.transparent )
-  			// Define Transparent
-  			gIcon.transparent = icon.transparent;
-  		return gIcon;
-  	},
-  	mapMarkers: function(center, markers) {
-          if ( typeof(markers.length) == 'undefined' )
-          	// One marker only. Parse it into an array for consistency.
-              markers = [markers];
-  		
-  		var j = 0;
-  		for ( i = 0; i<markers.length; i++) {
-  			var gIcon = null;
-  			if ( markers[i].icon ) {
-  				gIcon = $.googleMaps.mapMarkersOptions(markers[i].icon);
-  			}
-  			
-  			if ( markers[i].geocode ) {
-  				var geocoder = new GClientGeocoder();
-  				geocoder.getLatLng(markers[i].geocode, function(center) {										
-  					if (!center) 
-  						alert(address + " not found");
-  					else 
-  						$.googleMaps.marker[i] = new GMarker(center, {draggable: markers[i].draggable, icon: gIcon});
-  				});
-  			}
-  			else if ( markers[i].latitude && markers[i].longitude ) {
-  				// Latitude & Longitude Center Point
-  				center = $.googleMaps.mapLatLong(markers[i].latitude, markers[i].longitude);
-  				$.googleMaps.marker[i] = new GMarker(center, {draggable: markers[i].draggable, icon: gIcon});
-  			}
-  			$.googleMaps.gMap.addOverlay($.googleMaps.marker[i]);
-  			if ( markers[i].info ) {
-  				// Hide Div Layer With Info Window HTML
-  				$(markers[i].info.layer).hide();
-  				// Marker Div Layer Exists
-  				if ( markers[i].info.popup )
-  					// Map Marker Shows an Info Box on Load
-  					$.googleMaps.marker[i].openInfoWindowHtml($(markers[i].info.layer).html());
-  				else
-  					$.googleMaps.marker[i].bindInfoWindowHtml( $(markers[i].info.layer).html().toString() );
-  			}
-  		}
-  	},
-  	mapControlsLocation: function(location) {
-  		switch (location) {
-  			case 'G_ANCHOR_TOP_RIGHT' :
-  				return G_ANCHOR_TOP_RIGHT;
-  			break;
-  			case 'G_ANCHOR_BOTTOM_RIGHT' :
-  				return G_ANCHOR_BOTTOM_RIGHT;
-  			break;
-  			case 'G_ANCHOR_TOP_LEFT' :
-  				return G_ANCHOR_TOP_LEFT;
-  			break;
-  			case 'G_ANCHOR_BOTTOM_LEFT' :
-  				return G_ANCHOR_BOTTOM_LEFT;
-  			break;
-  		}
-  		return;
-  	},
-  	mapControl: function(control) {
-  		switch (control) {
-  			case 'GLargeMapControl3D' :
-  				return new GLargeMapControl3D();
-  			break;
-  			case 'GLargeMapControl' :
-  				return new GLargeMapControl();
-  			break;
-  			case 'GSmallMapControl' :
-  				return new GSmallMapControl();
-  			break;
-  			case 'GSmallZoomControl3D' :
-  				return new GSmallZoomControl3D();
-  			break;
-  			case 'GSmallZoomControl' :
-  				return new GSmallZoomControl();
-  			break;
-  			case 'GScaleControl' :
-  				return new GScaleControl();
-  			break;
-  			case 'GMapTypeControl' :
-  				return new GMapTypeControl();
-  			break;
-  			case 'GHierarchicalMapTypeControl' :
-  				return new GHierarchicalMapTypeControl();
-  			break;
-  			case 'GOverviewMapControl' :
-  				return new GOverviewMapControl();
-  			break;
-  			case 'GNavLabelControl' :
-  				return new GNavLabelControl();
-  			break;
-  		}
-  		return;
-  	},
-  	mapTypeControl: function(type) {
-  		switch ( type ) {
-  			case 'G_NORMAL_MAP' :
-  				return G_NORMAL_MAP;
-  			break;
-  			case 'G_SATELLITE_MAP' :
-  				return G_SATELLITE_MAP;
-  			break;
-  			case 'G_HYBRID_MAP' :
-  				return G_HYBRID_MAP;
-  			break;
-  		}
-  		return;
-  	},
-  	mapControls: function(options) {
-  		// Default Controls Options
-  		controlsDefaults = {
-  			type: {
-  				location: 'G_ANCHOR_TOP_RIGHT',
-  				x: 10,
-  				y: 10,
-  				control: 'GMapTypeControl'
-  			},
-  			zoom: {
-  				location: 'G_ANCHOR_TOP_LEFT',
-  				x: 10,
-  				y: 10,
-  				control: 'GLargeMapControl3D'
-  			}
-  		};
-  		// Merge the User & Default Options
-  		options = $.extend({}, controlsDefaults, options);
-  		options.type = $.extend({}, controlsDefaults.type, options.type);
-  		options.zoom = $.extend({}, controlsDefaults.zoom, options.zoom);
-  		
-  		if ( options.type ) {
-  			var controlLocation = $.googleMaps.mapControlsLocation(options.type.location);
-  			var controlPosition = new GControlPosition(controlLocation, new GSize(options.type.x, options.type.y));
-  			$.googleMaps.gMap.addControl($.googleMaps.mapControl(options.type.control), controlPosition);
-  		}
-  		if ( options.zoom ) {
-  			var controlLocation = $.googleMaps.mapControlsLocation(options.zoom.location);
-  			var controlPosition = new GControlPosition(controlLocation, new GSize(options.zoom.x, options.zoom.y))
-  			$.googleMaps.gMap.addControl($.googleMaps.mapControl(options.zoom.control), controlPosition);
-  		}
-  		if ( options.mapType ) {
-  			if ( options.mapType.length >= 1 ) {
-  				for ( i = 0; i<options.mapType.length; i++) {
-  					if ( options.mapType[i].remove )
-  						$.googleMaps.gMap.removeMapType($.googleMaps.mapTypeControl(options.mapType[i].remove));
-  					if ( options.mapType[i].add )
-  						$.googleMaps.gMap.addMapType($.googleMaps.mapTypeControl(options.mapType[i].add));
-  				}
-  			} 
-  			else {
-  				if ( options.mapType.add )
-  					$.googleMaps.gMap.addMapType($.googleMaps.mapTypeControl(options.mapType.add));
-  				if ( options.mapType.remove )
-  					$.googleMaps.gMap.removeMapType($.googleMaps.mapTypeControl(options.mapType.remove));
-  			}
-  		}
-  	},
-  	geoCode: function(options) {
-  		geocoder = new GClientGeocoder();
-  		
-  		geocoder.getLatLng(options.address, function(point) {
-  			if (!point)
-  				alert(address + " not found");
-  			else
-            		$.googleMaps.gMap.setCenter(point, options.depth);
-        	});
-  	}
-  };
-})(jQuery); // Call and execute the function immediately passing the jQuery object
+        }
+        else if (type && type == 'markers' && $.isArray(markers)) {
+          for (var i in markers) {
+            $.goMap.bounds.extend($(this.mapId).data(markers[i]).position);
+          }
+        }
+
+        $.goMap.map.fitBounds($.goMap.bounds);
+      }
+    },
+
+    addMarker: function(marker) {
+      $(this.mapId).data(marker.id,marker);
+      $.goMap.markers.push(marker.id);
+    },
+
+    getVisibleMarker: function(marker) {
+      return $(this.mapId).data(marker).getVisible();
+    },
+
+    showHideMarker: function(marker) {
+      if($.goMap.getVisibleMarker(marker)) {
+        $(this.mapId).data(marker).setVisible(false);
+        var info = $(this.mapId).data(marker + 'info');
+        if(info.show) {
+          info.close();
+          info.show = false;
+        }
+      }
+      else
+        $(this.mapId).data(marker).setVisible(true);
+    },
+
+    getMarkerCount: function() {
+      return $.goMap.markers.length;
+    },
+
+    getTmpMarkerCount: function() {
+      return $.goMap.tmpMarkers.length;
+    },
+
+    getVisibleMarkerCount: function() {
+      var vcount = 0;
+      for (var i in $.goMap.markers) {
+        if($.goMap.getVisibleMarker($.goMap.markers[i])) {
+          vcount++;
+        }
+      }
+      return vcount;
+    },
+
+    setMarker: function(marker, options) {
+      var tmarker = $(this.mapId).data(marker);
+
+      delete options.id;
+      delete options.visible;
+
+      if(options.icon) {
+        var toption = options.icon;
+        delete options.icon;
+
+        if(toption && toption == 'default') {
+          if (this.opts.icon && this.opts.icon.image) {
+            options.icon = this.opts.icon.image;
+            if (this.opts.icon.shadow)
+              options.shadow = this.opts.icon.shadow;
+          }
+          else if (this.opts.icon)
+            options.icon = this.opts.icon;
+        }
+        else if(toption && toption.image) {
+          options.icon = toption.image;
+          if (toption.shadow)
+            options.shadow = toption.shadow;
+        }
+        else if (toption)
+          options.icon = toption;
+      }
+
+      if (options.address) {
+        $.goMap.geocode(options.address, false, {markerId:tmarker});
+        delete options.address;
+        delete options.latitude;
+        delete options.longitude;
+        delete options.position;
+      }
+      else if (options.latitude && options.longitude || options.position) {
+        if (!options.position)
+          options.position = new google.maps.LatLng(options.latitude, options.longitude);
+      }
+      tmarker.setOptions(options);
+    },
+
+    getMarkers: function(type) {
+      var array = [];
+      switch(type) {
+        case "json":
+          for (var i in $.goMap.markers) {
+            var temp = "'" + i + "': '" + $(this.mapId).data($.goMap.markers[i]).getPosition().toUrlValue() + "'";
+            array.push(temp);
+          }
+          return "{'markers':{" + array.join(",") + "}}";
+          break;
+        case "data":
+          for (var i in $.goMap.markers) {
+            var temp = "marker[" + i + "]=" + $(this.mapId).data($.goMap.markers[i]).getPosition().toUrlValue();
+            array.push(temp);
+          }
+          return array.join("&");
+          break;
+
+        default:
+          for (var i in $.goMap.markers) {
+            var temp = $(this.mapId).data($.goMap.markers[i]).getPosition().toUrlValue();
+            array.push(temp);
+          }
+          return array;
+          break;
+      }
+
+    },
+
+    removeMarker: function(marker) {
+      var index = $.inArray(marker, $.goMap.markers), current;
+      if (index > -1) {
+        $.goMap.tmpMarkers.splice(index,1);
+        current = $.goMap.markers.splice(index,1);
+        var markerId = current[0];
+        var marker   = $(this.mapId).data(markerId);
+        var info     = $(this.mapId).data(markerId + 'info');
+
+        marker.setVisible(false);
+        marker.setMap(null);
+        $(this.mapId).removeData(markerId);
+
+        if(info) {
+          info.close();
+          info.show = false;
+          $(this.mapId).removeData(markerId + 'info');
+        }
+        return true;
+      }
+      return false;
+    },
+
+    clearMarkers: function() {
+      for (var i in $.goMap.markers) {
+        var markerId = $.goMap.markers[i];
+        var marker   = $(this.mapId).data(markerId);
+        var info     = $(this.mapId).data(markerId + 'info');
+
+        marker.setVisible(false);
+        marker.setMap(null);
+        $(this.mapId).removeData(markerId);
+
+        if(info) {
+          info.close();
+          info.show = false;
+          $(this.mapId).removeData(markerId + 'info');
+        }
+      }
+      $.goMap.singleMarker = false;
+      $.goMap.markers = [];
+      $.goMap.tmpMarkers = [];
+    },
+
+    getVisibleMarkers: function() {
+      var array = [];
+
+      for (var i in $.goMap.markers) {
+        if ($.goMap.isVisible($(this.mapId).data($.goMap.markers[i]).getPosition()))
+          array.push($.goMap.markers[i]);
+      }
+      return array;
+    },
+
+    isVisible: function(latlng) {
+      return $.goMap.map.getBounds().contains(latlng);
+    },
+
+    createMarker: function(marker) {
+
+      var options = { map:this.map };
+
+      this.count++;
+
+      if (marker.id)
+        options.id = marker.id;
+      else
+        options.id = this.opts.prefixId + this.count;
+
+      $.goMap.tmpMarkers.push(options.id);
+
+      if (marker.visible == false)
+        options.visible = marker.visible;
+
+      if (marker.title)
+        options.title = marker.title;
+
+      if (marker.draggable)
+        options.draggable = marker.draggable;
+
+      if (marker.icon && marker.icon.image) {
+        options.icon = marker.icon.image;
+        if (marker.icon.shadow)
+          options.shadow = marker.icon.shadow;
+      }
+      else if (marker.icon)
+        options.icon = marker.icon;
+
+      else if (this.opts.icon && this.opts.icon.image) {
+        options.icon = this.opts.icon.image;
+        if (this.opts.icon.shadow)
+          options.shadow = this.opts.icon.shadow;
+      }
+      else if (this.opts.icon)
+        options.icon = this.opts.icon;
+
+      if (marker.address) {
+        if (marker.html)
+          options.html = marker.html;
+
+        $.goMap.geocode(marker.address, false, options);
+      }
+      else if (marker.latitude && marker.longitude || marker.position) {
+        if (marker.position)
+          options.position = marker.position;
+        else
+          options.position = new google.maps.LatLng(marker.latitude, marker.longitude);
+
+        var cmarker = new google.maps.Marker(options);
+
+        if (marker.html) {
+          if (!marker.html.content && !marker.html.ajax && !marker.html.id)
+            marker.html = { content:marker.html };
+          else if (!marker.html.content)
+            marker.html.content = null;
+
+          $.goMap.setInfoWindow(cmarker, marker.html);
+        }
+        $.goMap.addMarker(cmarker);
+        return cmarker;
+      }
+    }
+  }
+})(jQuery);

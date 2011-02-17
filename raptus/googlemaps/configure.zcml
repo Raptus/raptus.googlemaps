@@ -1,6 +1,7 @@
 <configure
     xmlns="http://namespaces.zope.org/zope"
     xmlns:genericsetup="http://namespaces.zope.org/genericsetup"
+    xmlns:cmf="http://namespaces.zope.org/cmf"
     i18n_domain="raptus.googlemaps">
     
     <include package=".browser" />
@@ -13,5 +14,12 @@
       description=""
       provides="Products.GenericSetup.interfaces.EXTENSION"
       />
+
+    <!-- File System Directory Views registration -->
+    <cmf:registerDirectory
+      name="raptus_googlemaps"
+      recursive="True"
+      />
+
 
 </configure>
