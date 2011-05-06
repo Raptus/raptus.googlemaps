@@ -3,7 +3,7 @@
  *
  * @url   http://www.pittss.lv/jquery/gomap/
  * @author  Jevgenijs Shtrauss <pittss@gmail.com>
- * @version 1.2.2
+ * @version 1.3.0 2011.02.28
  * This software is released under the MIT License <http://www.opensource.org/licenses/mit-license.php>
  */
 
@@ -16,154 +16,204 @@
   MyOverlay.prototype.onRemove = function() { };
   MyOverlay.prototype.draw = function() { };
 
-  $.fn.goMap = function(options) {
-    var opts = $.extend({}, $.goMap.defaults, options);
+  $.goMap = {};
 
+  $.fn.goMap = function(options) {
     return this.each(function() {
-      $.goMap.mapId    = this;
-      $.goMap.opts     = opts;
-      $.goMap.markers    = [];
-      $.goMap.tmpMarkers   = [];
-      $.goMap.centerLatLng = null;
-      $.goMap.init(opts);
+      var goMap = $(this).data('goMap');
+      if(!goMap) {
+        var goMapBase = $.extend(true, {}, $.goMapBase);
+        $(this).data('goMap', goMapBase.init(this, options));
+        $.goMap = goMapBase;
+      }
+      else {
+        $.goMap = goMap;
+      }
     });
   };
-  
 
-  $.goMap = {
+  $.goMapBase = {
     defaults: {
-      address:        '', // Street, City, Country
-      latitude:       56.9,
-      longitude:        24.1,
-      zoom:         4,
-      delay:          500,
-      hideByClick:      true,
-      oneInfoWindow:      true,
-      prefixId:       'gomarker',
-        navigationControl:    true, // Show or hide navigation control
+      address:          '', // Street, City, Country
+      latitude:         56.9,
+      longitude:          24.1,
+      zoom:           4,
+      delay:            200,
+      hideByClick:        true,
+      oneInfoWindow:        true,
+      prefixId:         'gomarker',
+      groupId:          'gogroup',
+        navigationControl:      true, // Show or hide navigation control
       navigationControlOptions: {
-        position:     'TOP_LEFT', // TOP, TOP_LEFT, TOP_RIGHT, BOTTOM, BOTTOM_LEFT, BOTTOM_RIGHT, LEFT, RIGHT
-        style:        'DEFAULT' // DEFAULT, ANDROID, SMALL, ZOOM_PAN
+        position: 'TOP_LEFT', // TOP, TOP_LEFT, TOP_RIGHT, BOTTOM, BOTTOM_LEFT, BOTTOM_RIGHT, LEFT, RIGHT
+        style:    'DEFAULT' // DEFAULT, ANDROID, SMALL, ZOOM_PAN
       },
-        mapTypeControl:     true, // Show or hide map control
-      mapTypeControlOptions:  {
-        position:       'TOP_RIGHT', // TOP, TOP_LEFT, TOP_RIGHT, BOTTOM, BOTTOM_LEFT, BOTTOM_RIGHT, LEFT, RIGHT
-        style:        'DEFAULT' // DEFAULT, DROPDOWN_MENU, HORIZONTAL_BAR
+        mapTypeControl:       true, // Show or hide map control
+      mapTypeControlOptions:    {
+        position:   'TOP_RIGHT', // TOP, TOP_LEFT, TOP_RIGHT, BOTTOM, BOTTOM_LEFT, BOTTOM_RIGHT, LEFT, RIGHT
+        style:    'DEFAULT' // DEFAULT, DROPDOWN_MENU, HORIZONTAL_BAR
       },
-        scaleControl:       false, // Show or hide scale
-      scrollwheel:      true, // Mouse scroll whell
-        directions:       false,
-        directionsResult:     null,
-      disableDoubleClickZoom: false,
-      streetViewControl:    false,
-      markers:        [],
-      maptype:        'HYBRID', // Map type - HYBRID, ROADMAP, SATELLITE, TERRAIN
-      html_prepend:     '<div class=gomapMarker>',
-      html_append:      '</div>',
-      addMarker:        false
-    },
-
+        scaleControl:         false, // Show or hide scale
+      scrollwheel:        true, // Mouse scroll whell
+        directions:         false,
+        directionsResult:       null,
+      disableDoubleClickZoom:   false,
+      streetViewControl:      false,
+      markers:          [],
+      maptype:          'HYBRID', // Map type - HYBRID, ROADMAP, SATELLITE, TERRAIN
+      html_prepend:       '<div class=gomapMarker>',
+      html_append:        '</div>',
+      addMarker:          false
+    },    
     map:      null,
     count:      0,
     markers:    [],
     tmpMarkers:   [],
+    geoMarkers:   [],
+    lockGeocode:  false,
     bounds:     null,
     overlay:    null,
     mapId:      null,
     opts:     null,
     centerLatLng: null,
 
-    init: function(opts) {
+    init: function(el, options) {
+      var opts  = $.extend({}, $.goMapBase.defaults, options);
+      this.mapId  = $(el);
+      this.opts = opts;
+
       if (opts.address)
-        $.goMap.geocode(opts.address, true);
-
-      else if (opts.latitude != this.defaults.latitude && opts.longitude != this.defaults.longitude)
-        this.centerLatLng = new google.maps.LatLng(opts.latitude,opts.longitude);
-
+        this.geocode({address: opts.address, center: true});
+//      else if (opts.latitude != $.goMapBase.defaults.latitude && opts.longitude != $.goMapBase.defaults.longitude)
+//        this.centerLatLng = new google.maps.LatLng(opts.latitude, opts.longitude);
       else if ($.isArray(opts.markers) && opts.markers.length > 0) {
         if (opts.markers[0].address)
-          $.goMap.geocode(opts.markers[0].address, true);
+          this.geocode({address: opts.markers[0].address, center: true});
         else
-          this.centerLatLng = new google.maps.LatLng(opts.markers[0].latitude,opts.markers[0].longitude);
+          this.centerLatLng = new google.maps.LatLng(opts.markers[0].latitude, opts.markers[0].longitude);
       }
       else
-        this.centerLatLng = new google.maps.LatLng(opts.latitude,opts.longitude);
+        this.centerLatLng = new google.maps.LatLng(opts.latitude, opts.longitude);
 
       var myOptions = {
-        center:           this.centerLatLng,
+        center:         this.centerLatLng,
         disableDoubleClickZoom: opts.disableDoubleClickZoom,
-            mapTypeControl:       opts.mapTypeControl,
+            mapTypeControl:     opts.mapTypeControl,
         streetViewControl:    opts.streetViewControl,
         mapTypeControlOptions:  {
-          position:       eval('google.maps.ControlPosition.' + opts.mapTypeControlOptions.position.toUpperCase()),
-          style:        eval('google.maps.MapTypeControlStyle.' + opts.mapTypeControlOptions.style.toUpperCase())
+          position: eval('google.maps.ControlPosition.' + opts.mapTypeControlOptions.position.toUpperCase()),
+          style:    eval('google.maps.MapTypeControlStyle.' + opts.mapTypeControlOptions.style.toUpperCase())
         },
-        mapTypeId:          eval('google.maps.MapTypeId.' + opts.maptype.toUpperCase()),
+        mapTypeId:        eval('google.maps.MapTypeId.' + opts.maptype.toUpperCase()),
             navigationControl:    opts.navigationControl,
         navigationControlOptions: {
-          position:       eval('google.maps.ControlPosition.' + opts.navigationControlOptions.position.toUpperCase()),
-          style:        eval('google.maps.NavigationControlStyle.' + opts.navigationControlOptions.style.toUpperCase())
+          position: eval('google.maps.ControlPosition.' + opts.navigationControlOptions.position.toUpperCase()),
+          style:    eval('google.maps.NavigationControlStyle.' + opts.navigationControlOptions.style.toUpperCase())
         },
-            scaleControl:       opts.scaleControl,
-            scrollwheel:        opts.scrollwheel,
-        zoom:           opts.zoom
+            scaleControl:     opts.scaleControl,
+            scrollwheel:      opts.scrollwheel,
+        zoom:         opts.zoom
       };
 
-      $.goMap.map   = new google.maps.Map(this.mapId, myOptions);
-      $.goMap.overlay = new MyOverlay($.goMap.map);
+      this.map    = new google.maps.Map(el, myOptions);
+      this.overlay  = new MyOverlay(this.map);
 
       for (var j = 0; j < opts.markers.length; j++)
         this.createMarker(opts.markers[j]);
 
+      var goMap = this;
       if (opts.addMarker == true || opts.addMarker == 'multi') {
-        google.maps.event.addListener($.goMap.map, 'click', function(event) {
+        google.maps.event.addListener(goMap.map, 'click', function(event) {
           var options = {
             position:  event.latLng,
             draggable: true
           };
-          var marker = $.goMap.createMarker(options);
+
+          var marker = goMap.createMarker(options);
 
           google.maps.event.addListener(marker, 'dblclick', function(event) {
             marker.setMap(null);
-            $.goMap.removeMarker(marker.id);
+            goMap.removeMarker(marker.id);
           });
 
         });
       }
       else if (opts.addMarker == 'single') {
-        google.maps.event.addListener($.goMap.map, 'click', function(event) {
-          if(!$.goMap.singleMarker) {
+        google.maps.event.addListener(goMap.map, 'click', function(event) {
+          if(!goMap.singleMarker) {
             var options = {
               position:  event.latLng,
               draggable: true
             };
-            var marker = $.goMap.createMarker(options);
 
-            $.goMap.singleMarker = true;
+            var marker = goMap.createMarker(options);
+            goMap.singleMarker = true;
 
             google.maps.event.addListener(marker, 'dblclick', function(event) {
               marker.setMap(null);
-              $.goMap.removeMarker(marker.id);
-              $.goMap.singleMarker = false;
+              goMap.removeMarker(marker.id);
+              goMap.singleMarker = false;
             });
           }
         });
       }
+      return this;
     },
 
-    getMap: function() {
-       return $.goMap.map;
+    ready: function(f) {
+      google.maps.event.addListenerOnce(this.map, 'bounds_changed', function() { 
+        return f();
+        }); 
+    },
+
+    geocode: function(address, options) {
+      var goMap = this;
+      setTimeout(function() {
+        geocoder.geocode({'address': address.address}, function(results, status) {
+              if (status == google.maps.GeocoderStatus.OK && address.center)
+            goMap.map.setCenter(results[0].geometry.location);
+
+          if (status == google.maps.GeocoderStatus.OK && options && options.markerId)
+            options.markerId.setPosition(results[0].geometry.location);
+
+          else if (status == google.maps.GeocoderStatus.OK && options) {
+            if(goMap.lockGeocode) {
+              goMap.lockGeocode = false;
+              options.position  = results[0].geometry.location;
+              options.geocode   = true;
+              goMap.createMarker(options);
+            }
+          }
+          else if(status == google.maps.GeocoderStatus.OVER_QUERY_LIMIT) {
+            goMap.geocode(address, options);
+          }
+            });
+      }, this.opts.delay);
+    },
+
+    geoMarker: function() {
+      if(this.geoMarkers.length > 0 && !this.lockGeocode) {
+        this.lockGeocode = true;
+        var current = this.geoMarkers.splice(0, 1);
+        this.geocode({address:current[0].address}, current[0]);
+      }
+      else if(this.lockGeocode) {
+        var goMap = this;
+        setTimeout(function() {
+          goMap.geoMarker();
+        }, this.opts.delay);
+      }
     },
 
     setMap: function(options) {
       delete options.mapTypeId;
 
       if (options.address) {
-        $.goMap.geocode(options.address, true);
+        this.geocode({address: options.address, center: true});
         delete options.address;
       }
       else if (options.latitude && options.longitude) {
-        options.center = new google.maps.LatLng(options.latitude,options.longitude);
+        options.center = new google.maps.LatLng(options.latitude, options.longitude);
         delete options.longitude;
         delete options.latitude;
       }
@@ -180,7 +230,11 @@
       if(options.navigationControlOptions && options.navigationControlOptions.style)
         options.navigationControlOptions.style = eval('google.maps.NavigationControlStyle.' + options.navigationControlOptions.style.toUpperCase());
 
-      $.goMap.map.setOptions(options);
+      this.map.setOptions(options);
+    },
+
+    getMap: function() {
+       return this.map;
     },
 
     createListener: function(type, event, data) {
@@ -190,7 +244,7 @@
         type = {type:type};
 
       if(type.type == 'map')
-        target = $.goMap.map;
+        target = this.map;
       else if(type.type == 'marker' && type.marker)
         target = $(this.mapId).data(type.marker);
       else if(type.type == 'info' && type.marker)
@@ -198,9 +252,9 @@
 
       if(target)
         return google.maps.event.addListener(target, event, data);
-      else if((type.type == 'marker' || type.type == 'info') && $.goMap.getMarkerCount() != $.goMap.getTmpMarkerCount())
+      else if((type.type == 'marker' || type.type == 'info') && this.getMarkerCount() != this.getTmpMarkerCount())
         setTimeout(function() {
-          $.goMap.createListener(type, event, data);
+          this.createListener(type, event, data);
         }, this.opts.delay);
     },
 
@@ -208,66 +262,34 @@
       google.maps.event.removeListener(listener);
     },
 
-    geocode: function(address, setCenter, options) {
-      setTimeout(function() {
-        geocoder.geocode({'address': address}, function(results, status) {
-
-              if (status == google.maps.GeocoderStatus.OK && setCenter)
-            $.goMap.map.setCenter(results[0].geometry.location);
-
-          if (status == google.maps.GeocoderStatus.OK && options && options.markerId)
-            options.markerId.setPosition(results[0].geometry.location);
-
-          else if (status == google.maps.GeocoderStatus.OK && options) {
-            options.position = results[0].geometry.location;
-            var cmarker = new google.maps.Marker(options);
-
-            if (options.html) {
-              if (!options.html.content && !options.html.ajax && !options.html.id)
-                options.html = { content:options.html };
-              else if (!options.html.content)
-                options.html.content = null;
-
-              $.goMap.setInfoWindow(cmarker, options.html);
-            }
-            $.goMap.addMarker(cmarker);
-            return cmarker;
-          }
-
-          else if(status == google.maps.GeocoderStatus.OVER_QUERY_LIMIT) {
-            $.goMap.geocode(address, false, options);
-          }
-            });
-      }, this.opts.delay);
-    },
-
     setInfoWindow: function(marker, html) {
-      html.content    = this.opts.html_prepend + html.content + this.opts.html_append;
+      var goMap = this;
+      html.content    = goMap.opts.html_prepend + html.content + goMap.opts.html_append;
       var infowindow  = new google.maps.InfoWindow(html);
       infowindow.show = false;
 
-      $(this.mapId).data(marker.id + 'info',infowindow);
+      $(goMap.mapId).data(marker.id + 'info',infowindow);
 
       if (html.popup) {
-        $.goMap.openWindow(infowindow, marker, html);
+        goMap.openWindow(infowindow, marker, html);
         infowindow.show = true;
       }
 
       google.maps.event.addListener(marker, 'click', function() {
-        if (infowindow.show && $.goMap.opts.hideByClick) {
+        if (infowindow.show && goMap.opts.hideByClick) {
           infowindow.close();
           infowindow.show = false;
         }
         else {
-          $.goMap.openWindow(infowindow, marker, html);
+          goMap.openWindow(infowindow, marker, html);
           infowindow.show = true;
         }
       });
     },
 
     openWindow: function(infowindow, marker, html) {
-      if($.goMap.opts.oneInfoWindow)
-        $.goMap.clearInfo();
+      if(this.opts.oneInfoWindow)
+        this.clearInfo();
 
       if (html.ajax) {
         infowindow.open(this.map, marker);
@@ -286,14 +308,13 @@
         infowindow.open(this.map, marker);
     },
 
-    clearInfo: function() {
-      for (var i in $.goMap.markers) {
-        var info = $(this.mapId).data($.goMap.markers[i] + 'info');
-        if(info) {
-          info.close();
-          info.show = false;
-        }
-      }
+    setInfo: function(id, text) {
+      var info = $(this.mapId).data(id + 'info');
+
+      if(typeof text == 'object')
+        info.setOptions(text);
+      else
+        info.setContent(text);
     },
 
     getInfo: function(id, hideDiv) {
@@ -304,90 +325,229 @@
         return info;
     },
 
-    setInfo: function(id, text) {
-      var info = $(this.mapId).data(id + 'info');
-
-      if(typeof text == 'object') {
-        info.setOptions(text);
+    clearInfo: function() {
+      for (var i in this.markers) {
+        var info = $(this.mapId).data(this.markers[i] + 'info');
+        if(info) {
+          info.close();
+          info.show = false;
+        }
       }
-      else
-        info.setContent(text);
-    },
-
-    getBounds: function() {
-      return $.goMap.map.getBounds();
     },
 
     fitBounds: function(type, markers) {
-
-      if($.goMap.getMarkerCount() != $.goMap.getTmpMarkerCount())
+      var goMap = this;
+      if(this.getMarkerCount() != this.getTmpMarkerCount())
         setTimeout(function() {
-            $.goMap.fitBounds(type, markers);
-          }, this.opts.delay);
+          goMap.fitBounds(type, markers);
+        }, this.opts.delay);
       else {
-
-        $.goMap.bounds = new google.maps.LatLngBounds();
+        this.bounds = new google.maps.LatLngBounds();
 
         if(!type || (type && type == 'all')) {
-          for (var i in $.goMap.markers) {
-            $.goMap.bounds.extend($(this.mapId).data($.goMap.markers[i]).position);
+          for (var i in this.markers) {
+            this.bounds.extend($(this.mapId).data(this.markers[i]).position);
           }
         }
         else if (type && type == 'visible') {
-          for (var i in $.goMap.markers) {
-            if($.goMap.getVisibleMarker($.goMap.markers[i]))
-              $.goMap.bounds.extend($(this.mapId).data($.goMap.markers[i]).position);
+          for (var i in this.markers) {
+            if(this.getVisibleMarker(this.markers[i]))
+              this.bounds.extend($(this.mapId).data(this.markers[i]).position);
           }
   
         }
         else if (type && type == 'markers' && $.isArray(markers)) {
           for (var i in markers) {
-            $.goMap.bounds.extend($(this.mapId).data(markers[i]).position);
+            this.bounds.extend($(this.mapId).data(markers[i]).position);
           }
         }
-
-        $.goMap.map.fitBounds($.goMap.bounds);
+        this.map.fitBounds(this.bounds);
       }
     },
 
-    addMarker: function(marker) {
-      $(this.mapId).data(marker.id,marker);
-      $.goMap.markers.push(marker.id);
+    getBounds: function() {
+      return this.map.getBounds();
+    },
+
+    showHideMarker: function(marker, display) {
+      if(typeof display === 'undefined') {
+        if(this.getVisibleMarker(marker)) {
+          $(this.mapId).data(marker).setVisible(false);
+          var info = $(this.mapId).data(marker + 'info');
+          if(info && info.show) {
+            info.close();
+            info.show = false;
+          }
+        }
+        else
+          $(this.mapId).data(marker).setVisible(true);
+      }
+      else
+        $(this.mapId).data(marker).setVisible(display);
+    },
+
+    showHideMarkerByGroup: function(group, display) {
+      for (var i in this.markers) {
+        var markerId = this.markers[i];
+        var marker   = $(this.mapId).data(markerId);
+        if(marker.group == group) {
+          if(typeof display === 'undefined') {
+            if(this.getVisibleMarker(markerId)) {
+              marker.setVisible(false);
+              var info = $(this.mapId).data(markerId + 'info');
+              if(info && info.show) {
+                info.close();
+                info.show = false;
+              }
+            }
+            else
+              marker.setVisible(true);
+          }
+          else
+            marker.setVisible(display);
+        }
+      }
     },
 
     getVisibleMarker: function(marker) {
       return $(this.mapId).data(marker).getVisible();
     },
 
-    showHideMarker: function(marker) {
-      if($.goMap.getVisibleMarker(marker)) {
-        $(this.mapId).data(marker).setVisible(false);
-        var info = $(this.mapId).data(marker + 'info');
-        if(info.show) {
-          info.close();
-          info.show = false;
-        }
-      }
-      else
-        $(this.mapId).data(marker).setVisible(true);
-    },
-
     getMarkerCount: function() {
-      return $.goMap.markers.length;
+      return this.markers.length;
     },
 
     getTmpMarkerCount: function() {
-      return $.goMap.tmpMarkers.length;
+      return this.tmpMarkers.length;
     },
 
     getVisibleMarkerCount: function() {
-      var vcount = 0;
-      for (var i in $.goMap.markers) {
-        if($.goMap.getVisibleMarker($.goMap.markers[i])) {
-          vcount++;
-        }
+      return this.getMarkers('visiblesInMap').length;
+    },
+
+    getMarkerByGroupCount: function(group) {
+      return this.getMarkers('group', group).length;
+    },
+
+    getMarkers: function(type, name) {
+      var array = [];
+      switch(type) {
+        case "json":
+          for (var i in this.markers) {
+            var temp = "'" + i + "': '" + $(this.mapId).data(this.markers[i]).getPosition().toUrlValue() + "'";
+            array.push(temp);
+          }
+          array = "{'markers':{" + array.join(",") + "}}";
+          break;
+        case "data":
+          for (var i in this.markers) {
+            var temp = "marker[" + i + "]=" + $(this.mapId).data(this.markers[i]).getPosition().toUrlValue();
+            array.push(temp);
+          }
+          array = array.join("&");          
+          break;
+        case "visiblesInBounds":
+          for (var i in this.markers) {
+            if (this.isVisible($(this.mapId).data(this.markers[i]).getPosition()))
+              array.push(this.markers[i]);
+          }
+          break;
+        case "visiblesInMap":
+          for (var i in this.markers) {
+            if(this.getVisibleMarker(this.markers[i]))
+              array.push(this.markers[i]);
+          }
+          break;
+        case "group":
+          if(name)
+            for (var i in this.markers) {
+              if($(this.mapId).data(this.markers[i]).group == name)
+                array.push(this.markers[i]);
+            }
+          break;
+        case "markers":
+          for (var i in this.markers) {
+            var temp = $(this.mapId).data(this.markers[i]);
+            array.push(temp);
+          }
+          break;
+        default:
+          for (var i in this.markers) {
+            var temp = $(this.mapId).data(this.markers[i]).getPosition().toUrlValue();
+            array.push(temp);
+          }
+          break;
       }
-      return vcount;
+      return array;
+    },
+
+    getVisibleMarkers: function() {
+      return this.getMarkers('visiblesInBounds');
+    },
+
+    createMarker: function(marker) {
+      if (!marker.geocode) {
+        this.count++;
+        if (!marker.id)
+          marker.id = this.opts.prefixId + this.count;
+        this.tmpMarkers.push(marker.id);
+      }
+      if (marker.address && !marker.geocode) {
+        this.geoMarkers.push(marker);
+        this.geoMarker();
+      }
+      else if (marker.latitude && marker.longitude || marker.position) {
+        var options = { map:this.map };
+        options.id      = marker.id;
+        options.group   = marker.group ? marker.group : this.opts.groupId; 
+        options.zIndex    = marker.zIndex ? marker.zIndex : 0;
+        options.zIndexOrg = marker.zIndexOrg ? marker.zIndexOrg : 0;
+
+        if (marker.visible == false)
+          options.visible = marker.visible;
+
+        if (marker.title)
+          options.title = marker.title;
+
+        if (marker.draggable)
+          options.draggable = marker.draggable;
+
+        if (marker.icon && marker.icon.image) {
+          options.icon = marker.icon.image;
+          if (marker.icon.shadow)
+            options.shadow = marker.icon.shadow;
+        }
+        else if (marker.icon)
+          options.icon = marker.icon;
+
+        else if (this.opts.icon && this.opts.icon.image) {
+          options.icon = this.opts.icon.image;
+          if (this.opts.icon.shadow)
+            options.shadow = this.opts.icon.shadow;
+        }
+        else if (this.opts.icon)
+          options.icon = this.opts.icon;
+
+        options.position = marker.position ? marker.position : new google.maps.LatLng(marker.latitude, marker.longitude);
+
+        var cmarker = new google.maps.Marker(options);
+
+        if (marker.html) {
+          if (!marker.html.content && !marker.html.ajax && !marker.html.id)
+            marker.html = { content:marker.html };
+          else if (!marker.html.content)
+            marker.html.content = null;
+
+          this.setInfoWindow(cmarker, marker.html);
+        }
+        this.addMarker(cmarker);
+        return cmarker;
+      }
+    },
+
+    addMarker: function(marker) {
+      $(this.mapId).data(marker.id, marker);
+      this.markers.push(marker.id);
     },
 
     setMarker: function(marker, options) {
@@ -419,7 +579,7 @@
       }
 
       if (options.address) {
-        $.goMap.geocode(options.address, false, {markerId:tmarker});
+        this.geocode({address: options.address}, {markerId:tmarker});
         delete options.address;
         delete options.latitude;
         delete options.longitude;
@@ -432,40 +592,11 @@
       tmarker.setOptions(options);
     },
 
-    getMarkers: function(type) {
-      var array = [];
-      switch(type) {
-        case "json":
-          for (var i in $.goMap.markers) {
-            var temp = "'" + i + "': '" + $(this.mapId).data($.goMap.markers[i]).getPosition().toUrlValue() + "'";
-            array.push(temp);
-          }
-          return "{'markers':{" + array.join(",") + "}}";
-          break;
-        case "data":
-          for (var i in $.goMap.markers) {
-            var temp = "marker[" + i + "]=" + $(this.mapId).data($.goMap.markers[i]).getPosition().toUrlValue();
-            array.push(temp);
-          }
-          return array.join("&");
-          break;
-
-        default:
-          for (var i in $.goMap.markers) {
-            var temp = $(this.mapId).data($.goMap.markers[i]).getPosition().toUrlValue();
-            array.push(temp);
-          }
-          return array;
-          break;
-      }
-
-    },
-
     removeMarker: function(marker) {
-      var index = $.inArray(marker, $.goMap.markers), current;
+      var index = $.inArray(marker, this.markers), current;
       if (index > -1) {
-        $.goMap.tmpMarkers.splice(index,1);
-        current = $.goMap.markers.splice(index,1);
+        this.tmpMarkers.splice(index,1);
+        current = this.markers.splice(index,1);
         var markerId = current[0];
         var marker   = $(this.mapId).data(markerId);
         var info     = $(this.mapId).data(markerId + 'info');
@@ -485,8 +616,8 @@
     },
 
     clearMarkers: function() {
-      for (var i in $.goMap.markers) {
-        var markerId = $.goMap.markers[i];
+      for (var i in this.markers) {
+        var markerId = this.markers[i];
         var marker   = $(this.mapId).data(markerId);
         var info     = $(this.mapId).data(markerId + 'info');
 
@@ -500,88 +631,15 @@
           $(this.mapId).removeData(markerId + 'info');
         }
       }
-      $.goMap.singleMarker = false;
-      $.goMap.markers = [];
-      $.goMap.tmpMarkers = [];
-    },
-
-    getVisibleMarkers: function() {
-      var array = [];
-
-      for (var i in $.goMap.markers) {
-        if ($.goMap.isVisible($(this.mapId).data($.goMap.markers[i]).getPosition()))
-          array.push($.goMap.markers[i]);
-      }
-      return array;
+      this.singleMarker = false;
+      this.lockGeocode = false;
+      this.markers = [];
+      this.tmpMarkers = [];
+      this.geoMarkers = [];
     },
 
     isVisible: function(latlng) {
-      return $.goMap.map.getBounds().contains(latlng);
-    },
-
-    createMarker: function(marker) {
-
-      var options = { map:this.map };
-
-      this.count++;
-
-      if (marker.id)
-        options.id = marker.id;
-      else
-        options.id = this.opts.prefixId + this.count;
-
-      $.goMap.tmpMarkers.push(options.id);
-
-      if (marker.visible == false)
-        options.visible = marker.visible;
-
-      if (marker.title)
-        options.title = marker.title;
-
-      if (marker.draggable)
-        options.draggable = marker.draggable;
-
-      if (marker.icon && marker.icon.image) {
-        options.icon = marker.icon.image;
-        if (marker.icon.shadow)
-          options.shadow = marker.icon.shadow;
-      }
-      else if (marker.icon)
-        options.icon = marker.icon;
-
-      else if (this.opts.icon && this.opts.icon.image) {
-        options.icon = this.opts.icon.image;
-        if (this.opts.icon.shadow)
-          options.shadow = this.opts.icon.shadow;
-      }
-      else if (this.opts.icon)
-        options.icon = this.opts.icon;
-
-      if (marker.address) {
-        if (marker.html)
-          options.html = marker.html;
-
-        $.goMap.geocode(marker.address, false, options);
-      }
-      else if (marker.latitude && marker.longitude || marker.position) {
-        if (marker.position)
-          options.position = marker.position;
-        else
-          options.position = new google.maps.LatLng(marker.latitude, marker.longitude);
-
-        var cmarker = new google.maps.Marker(options);
-
-        if (marker.html) {
-          if (!marker.html.content && !marker.html.ajax && !marker.html.id)
-            marker.html = { content:marker.html };
-          else if (!marker.html.content)
-            marker.html.content = null;
-
-          $.goMap.setInfoWindow(cmarker, marker.html);
-        }
-        $.goMap.addMarker(cmarker);
-        return cmarker;
-      }
+      return this.map.getBounds().contains(latlng);
     }
   }
 })(jQuery);
