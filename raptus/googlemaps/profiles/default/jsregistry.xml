@@ -6,7 +6,7 @@
               compression="none"
               cookable="False"
               enabled="True"
-              expression="python:context.absolute_url()[4:5] != 's'"
+              expression="python:not context.absolute_url().startswith('https')"
               inline="False"/>
 
   <!-- https support  -->
@@ -14,10 +14,9 @@
               compression="none"
               cookable="False"
               enabled="True"
-              expression="python:context.absolute_url()[4:5] == 's'"
+              expression="python:context.absolute_url().startswith('https')"
               inline="False"/>
-              
-              
+
   <javascript cacheable="True"
               compression="safe"
               cookable="True"
@@ -25,4 +24,5 @@
               expression=""
               id="++resource++googlemaps.js"
               inline="False"/>
+
 </object>
