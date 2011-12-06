@@ -1,9 +1,9 @@
 /**
  * jQuery goMap
  *
- * @url   http://www.pittss.lv/jquery/gomap/
+ * @url    http://www.pittss.lv/jquery/gomap/
  * @author  Jevgenijs Shtrauss <pittss@gmail.com>
- * @version 1.3.0 2011.02.28
+ * @version  1.3.2 2011.07.01
  * This software is released under the MIT License <http://www.opensource.org/licenses/mit-license.php>
  */
 
@@ -35,52 +35,89 @@
   $.goMapBase = {
     defaults: {
       address:          '', // Street, City, Country
-      latitude:         56.9,
+      latitude:          56.9,
       longitude:          24.1,
-      zoom:           4,
+      zoom:            4,
       delay:            200,
       hideByClick:        true,
       oneInfoWindow:        true,
-      prefixId:         'gomarker',
+      prefixId:          'gomarker',
+      polyId:            'gopoly',
       groupId:          'gogroup',
         navigationControl:      true, // Show or hide navigation control
-      navigationControlOptions: {
-        position: 'TOP_LEFT', // TOP, TOP_LEFT, TOP_RIGHT, BOTTOM, BOTTOM_LEFT, BOTTOM_RIGHT, LEFT, RIGHT
-        style:    'DEFAULT' // DEFAULT, ANDROID, SMALL, ZOOM_PAN
+      navigationControlOptions:  {
+        position:  'TOP_LEFT', // TOP, TOP_LEFT, TOP_RIGHT, BOTTOM, BOTTOM_LEFT, BOTTOM_RIGHT, LEFT, RIGHT
+        style:    'DEFAULT'   // DEFAULT, ANDROID, SMALL, ZOOM_PAN
       },
         mapTypeControl:       true, // Show or hide map control
       mapTypeControlOptions:    {
         position:   'TOP_RIGHT', // TOP, TOP_LEFT, TOP_RIGHT, BOTTOM, BOTTOM_LEFT, BOTTOM_RIGHT, LEFT, RIGHT
-        style:    'DEFAULT' // DEFAULT, DROPDOWN_MENU, HORIZONTAL_BAR
+        style:     'DEFAULT'// DEFAULT, DROPDOWN_MENU, HORIZONTAL_BAR
       },
         scaleControl:         false, // Show or hide scale
       scrollwheel:        true, // Mouse scroll whell
         directions:         false,
         directionsResult:       null,
-      disableDoubleClickZoom:   false,
+      disableDoubleClickZoom:    false,
       streetViewControl:      false,
       markers:          [],
+      overlays:          [],
+      polyline:          {
+        color:    '#FF0000',
+        opacity:  1.0,
+        weight:    2
+      },
+      polygon:          {
+        color:      '#FF0000',
+        opacity:    1.0,
+        weight:      2,
+        fillColor:    '#FF0000',
+        fillOpacity:  0.2
+      },
+      circle:            {
+        color:      '#FF0000',
+        opacity:    1.0,
+        weight:      2,
+        fillColor:    '#FF0000',
+        fillOpacity:  0.2
+      },
+      rectangle:          {
+        color:      '#FF0000',
+        opacity:    1.0,
+        weight:      2,
+        fillColor:    '#FF0000',
+        fillOpacity:  0.2
+      },
       maptype:          'HYBRID', // Map type - HYBRID, ROADMAP, SATELLITE, TERRAIN
-      html_prepend:       '<div class=gomapMarker>',
+      html_prepend:        '<div class=gomapMarker>',
       html_append:        '</div>',
       addMarker:          false
     },    
     map:      null,
     count:      0,
     markers:    [],
-    tmpMarkers:   [],
-    geoMarkers:   [],
+    polylines:    [],
+    polygons:    [],
+    circles:    [],
+    rectangles:    [],
+    tmpMarkers:    [],
+    geoMarkers:    [],
     lockGeocode:  false,
-    bounds:     null,
+    bounds:      null,
+    overlays:    null,
     overlay:    null,
     mapId:      null,
-    opts:     null,
-    centerLatLng: null,
+    plId:      null,
+    pgId:      null,
+    cId:      null,
+    rId:      null,
+    opts:      null,
+    centerLatLng:  null,
 
     init: function(el, options) {
-      var opts  = $.extend({}, $.goMapBase.defaults, options);
+      var opts   = $.extend(true, {}, $.goMapBase.defaults, options);
       this.mapId  = $(el);
-      this.opts = opts;
+      this.opts  = opts;
 
       if (opts.address)
         this.geocode({address: opts.address, center: true});
@@ -97,29 +134,44 @@
 
       var myOptions = {
         center:         this.centerLatLng,
-        disableDoubleClickZoom: opts.disableDoubleClickZoom,
-            mapTypeControl:     opts.mapTypeControl,
+        disableDoubleClickZoom:  opts.disableDoubleClickZoom,
+            mapTypeControl:      opts.mapTypeControl,
         streetViewControl:    opts.streetViewControl,
         mapTypeControlOptions:  {
-          position: eval('google.maps.ControlPosition.' + opts.mapTypeControlOptions.position.toUpperCase()),
-          style:    eval('google.maps.MapTypeControlStyle.' + opts.mapTypeControlOptions.style.toUpperCase())
+          position:  google.maps.ControlPosition[opts.mapTypeControlOptions.position.toUpperCase()],
+          style:    google.maps.MapTypeControlStyle[opts.mapTypeControlOptions.style.toUpperCase()]
         },
-        mapTypeId:        eval('google.maps.MapTypeId.' + opts.maptype.toUpperCase()),
+        mapTypeId:        google.maps.MapTypeId[opts.maptype.toUpperCase()],
             navigationControl:    opts.navigationControl,
         navigationControlOptions: {
-          position: eval('google.maps.ControlPosition.' + opts.navigationControlOptions.position.toUpperCase()),
-          style:    eval('google.maps.NavigationControlStyle.' + opts.navigationControlOptions.style.toUpperCase())
+          position:  google.maps.ControlPosition[opts.navigationControlOptions.position.toUpperCase()],
+          style:    google.maps.NavigationControlStyle[opts.navigationControlOptions.style.toUpperCase()]
         },
-            scaleControl:     opts.scaleControl,
+            scaleControl:      opts.scaleControl,
             scrollwheel:      opts.scrollwheel,
-        zoom:         opts.zoom
+        zoom:          opts.zoom
       };
 
-      this.map    = new google.maps.Map(el, myOptions);
+      this.map     = new google.maps.Map(el, myOptions);
       this.overlay  = new MyOverlay(this.map);
 
-      for (var j = 0; j < opts.markers.length; j++)
+      this.overlays = { 
+        polyline:  { id: 'plId', array: 'polylines',   create: 'createPolyline' },
+        polygon:  { id: 'pgId', array: 'polygons',   create: 'createPolygon' },
+        circle:    { id: 'cId',  array: 'circles',    create: 'createCircle' },
+        rectangle:  { id: 'rId',  array: 'rectangles',  create: 'createRectangle' }
+      };
+
+      this.plId = $('<div style="display:none;"/>').appendTo(this.mapId);
+      this.pgId = $('<div style="display:none;"/>').appendTo(this.mapId);
+      this.cId  = $('<div style="display:none;"/>').appendTo(this.mapId);
+      this.rId  = $('<div style="display:none;"/>').appendTo(this.mapId);
+
+      for (var j = 0, l = opts.markers.length; j < l; j++)
         this.createMarker(opts.markers[j]);
+
+      for (var j = 0, l = opts.overlays.length; j < l; j++)
+        this[this.overlays[opts.overlays[j].type].create](opts.overlays[j]);
 
       var goMap = this;
       if (opts.addMarker == true || opts.addMarker == 'multi') {
@@ -157,6 +209,9 @@
           }
         });
       }
+      delete opts.markers;
+      delete opts.overlays;
+
       return this;
     },
 
@@ -187,7 +242,7 @@
           else if(status == google.maps.GeocoderStatus.OVER_QUERY_LIMIT) {
             goMap.geocode(address, options);
           }
-            });
+              });
       }, this.opts.delay);
     },
 
@@ -219,16 +274,16 @@
       }
 
       if(options.mapTypeControlOptions && options.mapTypeControlOptions.position)
-        options.mapTypeControlOptions.position = eval('google.maps.ControlPosition.' + options.mapTypeControlOptions.position.toUpperCase());
+        options.mapTypeControlOptions.position = google.maps.ControlPosition[options.mapTypeControlOptions.position.toUpperCase()];
 
       if(options.mapTypeControlOptions && options.mapTypeControlOptions.style)
-        options.mapTypeControlOptions.style = eval('google.maps.MapTypeControlStyle.' + options.mapTypeControlOptions.style.toUpperCase());
+        options.mapTypeControlOptions.style = google.maps.MapTypeControlStyle[options.mapTypeControlOptions.style.toUpperCase()];
 
       if(options.navigationControlOptions && options.navigationControlOptions.position)
-        options.navigationControlOptions.position = eval('google.maps.ControlPosition.' + options.navigationControlOptions.position.toUpperCase());
+        options.navigationControlOptions.position = google.maps.ControlPosition[options.navigationControlOptions.position.toUpperCase()];
 
       if(options.navigationControlOptions && options.navigationControlOptions.style)
-        options.navigationControlOptions.style = eval('google.maps.NavigationControlStyle.' + options.navigationControlOptions.style.toUpperCase());
+        options.navigationControlOptions.style = google.maps.NavigationControlStyle[options.navigationControlOptions.style.toUpperCase()];
 
       this.map.setOptions(options);
     },
@@ -253,8 +308,9 @@
       if(target)
         return google.maps.event.addListener(target, event, data);
       else if((type.type == 'marker' || type.type == 'info') && this.getMarkerCount() != this.getTmpMarkerCount())
+        var goMap = this;
         setTimeout(function() {
-          this.createListener(type, event, data);
+          goMap.createListener(type, event, data);
         }, this.opts.delay);
     },
 
@@ -326,7 +382,7 @@
     },
 
     clearInfo: function() {
-      for (var i in this.markers) {
+      for (var i = 0, l = this.markers.length; i < l; i++) {
         var info = $(this.mapId).data(this.markers[i] + 'info');
         if(info) {
           info.close();
@@ -345,19 +401,19 @@
         this.bounds = new google.maps.LatLngBounds();
 
         if(!type || (type && type == 'all')) {
-          for (var i in this.markers) {
+          for (var i = 0, l = this.markers.length; i < l; i++) {
             this.bounds.extend($(this.mapId).data(this.markers[i]).position);
           }
         }
         else if (type && type == 'visible') {
-          for (var i in this.markers) {
+          for (var i = 0, l = this.markers.length; i < l; i++) {
             if(this.getVisibleMarker(this.markers[i]))
               this.bounds.extend($(this.mapId).data(this.markers[i]).position);
           }
   
         }
         else if (type && type == 'markers' && $.isArray(markers)) {
-          for (var i in markers) {
+          for (var i = 0, l = markers.length; i < l; i++) {
             this.bounds.extend($(this.mapId).data(markers[i]).position);
           }
         }
@@ -367,6 +423,175 @@
 
     getBounds: function() {
       return this.map.getBounds();
+    },
+
+    createPolyline: function(poly) {
+      poly.type = 'polyline';
+      return this.createOverlay(poly);
+    },
+
+    createPolygon: function(poly) {
+      poly.type = 'polygon';
+      return this.createOverlay(poly);
+    },
+
+    createCircle: function(poly) {
+      poly.type = 'circle';
+      return this.createOverlay(poly);
+    },
+
+    createRectangle: function(poly) {
+      poly.type = 'rectangle';
+      return this.createOverlay(poly);
+    },
+
+    createOverlay: function(poly) {
+      var overlay = [];
+      if (!poly.id) {
+        this.count++;
+        poly.id = this.opts.polyId + this.count;
+      }
+      switch(poly.type) {
+        case 'polyline':
+          if (poly.coords.length > 0) {
+            for (var j = 0, l = poly.coords.length; j < l; j++)
+              overlay.push(new google.maps.LatLng(poly.coords[j].latitude, poly.coords[j].longitude));
+
+            overlay = new google.maps.Polyline({
+              map: this.map,
+              path: overlay,
+              strokeColor:   poly.color ? poly.color : this.opts.polyline.color,
+              strokeOpacity:  poly.opacity ? poly.opacity : this.opts.polyline.opacity,
+              strokeWeight:  poly.weight ? poly.weight : this.opts.polyline.weight
+            });
+          }
+          else
+            return false;
+          break;
+        case 'polygon':
+          if (poly.coords.length > 0) {
+            for (var j = 0, l = poly.coords.length; j < l; j++)
+              overlay.push(new google.maps.LatLng(poly.coords[j].latitude, poly.coords[j].longitude));
+
+            overlay = new google.maps.Polygon({
+              map: this.map,
+              path: overlay,
+              strokeColor: poly.color ? poly.color : this.opts.polygon.color,
+              strokeOpacity: poly.opacity ? poly.opacity : this.opts.polygon.opacity,
+              strokeWeight: poly.weight ? poly.weight : this.opts.polygon.weight,
+              fillColor: poly.fillColor ? poly.fillColor : this.opts.polygon.fillColor,
+              fillOpacity: poly.fillOpacity ? poly.fillOpacity : this.opts.polygon.fillOpacity
+            });
+          }
+          else
+            return false;
+          break;
+        case 'circle':
+          overlay = new google.maps.Circle({
+            map: this.map,
+            center: new google.maps.LatLng(poly.latitude, poly.longitude),
+            radius: poly.radius,
+            strokeColor: poly.color ? poly.color : this.opts.circle.color,
+            strokeOpacity: poly.opacity ? poly.opacity : this.opts.circle.opacity,
+            strokeWeight: poly.weight ? poly.weight : this.opts.circle.weight,
+            fillColor: poly.fillColor ? poly.fillColor : this.opts.circle.fillColor,
+            fillOpacity: poly.fillOpacity ? poly.fillOpacity : this.opts.circle.fillOpacity
+          });
+          break;
+        case 'rectangle':
+          overlay = new google.maps.Rectangle({
+            map: this.map,
+            bounds: new google.maps.LatLngBounds(new google.maps.LatLng(poly.sw.latitude, poly.sw.longitude), new google.maps.LatLng(poly.ne.latitude, poly.ne.longitude)),
+            strokeColor: poly.color ? poly.color : this.opts.circle.color,
+            strokeOpacity: poly.opacity ? poly.opacity : this.opts.circle.opacity,
+            strokeWeight: poly.weight ? poly.weight : this.opts.circle.weight,
+            fillColor: poly.fillColor ? poly.fillColor : this.opts.circle.fillColor,
+            fillOpacity: poly.fillOpacity ? poly.fillOpacity : this.opts.circle.fillOpacity
+          });
+          break;
+        default:
+          return false;
+          break;
+      }
+      this.addOverlay(poly, overlay);
+      return overlay;
+    },
+
+    addOverlay: function(poly, overlay) {
+      $(this[this.overlays[poly.type].id]).data(poly.id, overlay);
+      this[this.overlays[poly.type].array].push(poly.id);
+    },
+
+    setOverlay: function(type, overlay, options) {
+      overlay = $(this[this.overlays[type].id]).data(overlay);
+
+      if (options.coords && options.coords.length > 0) {
+        var array = [];
+        for (var j = 0, l = options.coords.length; j < l; j++)
+          array.push(new google.maps.LatLng(options.coords[j].latitude, options.coords[j].longitude));
+
+        options.path = array;
+        delete options.coords;
+      }
+      else if (options.ne && options.sw) {
+        options.bounds = new google.maps.LatLngBounds(new google.maps.LatLng(options.sw.latitude, options.sw.longitude), new google.maps.LatLng(options.ne.latitude, options.ne.longitude));
+        delete options.ne;
+        delete options.sw;
+      }
+      else if (options.latitude && options.longitude) {
+
+        options.center = new google.maps.LatLng(options.latitude, options.longitude);
+        delete options.latitude;
+        delete options.longitude;
+      }
+      overlay.setOptions(options);
+    },
+
+    showHideOverlay: function(type, overlay, display) {
+      if(typeof display === 'undefined') {
+        if(this.getVisibleOverlay(type, overlay))
+          display = false;
+        else
+          display = true;
+      }
+
+      if(display)
+        $(this[this.overlays[type].id]).data(overlay).setMap(this.map);
+      else
+        $(this[this.overlays[type].id]).data(overlay).setMap(null);
+    },
+
+    getVisibleOverlay: function(type, overlay) {
+      if($(this[this.overlays[type].id]).data(overlay).getMap())
+        return true;
+      else
+        return false;
+    },
+
+    getOverlaysCount: function(type) {
+      return this[this.overlays[type].array].length;
+    },
+
+    removeOverlay: function(type, overlay) {
+      var index = $.inArray(overlay, this[this.overlays[type].array]), current;
+      if (index > -1) {
+        current = this[this.overlays[type].array].splice(index, 1);
+        var markerId = current[0];
+        $(this[this.overlays[type].id]).data(markerId).setMap(null);
+        $(this[this.overlays[type].id]).removeData(markerId);
+
+        return true;
+      }
+      return false;
+    },
+
+    clearOverlays: function(type) {
+      for (var i = 0, l = this[this.overlays[type].array].length; i < l; i++) {
+        var markerId = this[this.overlays[type].array][i];
+        $(this[this.overlays[type].id]).data(markerId).setMap(null);
+        $(this[this.overlays[type].id]).removeData(markerId);
+      }
+      this[this.overlays[type].array] = [];
     },
 
     showHideMarker: function(marker, display) {
@@ -387,7 +612,7 @@
     },
 
     showHideMarkerByGroup: function(group, display) {
-      for (var i in this.markers) {
+      for (var i = 0, l = this.markers.length; i < l; i++) {
         var markerId = this.markers[i];
         var marker   = $(this.mapId).data(markerId);
         if(marker.group == group) {
@@ -433,46 +658,46 @@
       var array = [];
       switch(type) {
         case "json":
-          for (var i in this.markers) {
+          for (var i = 0, l = this.markers.length; i < l; i++) {
             var temp = "'" + i + "': '" + $(this.mapId).data(this.markers[i]).getPosition().toUrlValue() + "'";
             array.push(temp);
           }
           array = "{'markers':{" + array.join(",") + "}}";
           break;
         case "data":
-          for (var i in this.markers) {
+          for (var i = 0, l = this.markers.length; i < l; i++) {
             var temp = "marker[" + i + "]=" + $(this.mapId).data(this.markers[i]).getPosition().toUrlValue();
             array.push(temp);
           }
-          array = array.join("&");          
+          array = array.join("&");           
           break;
         case "visiblesInBounds":
-          for (var i in this.markers) {
+          for (var i = 0, l = this.markers.length; i < l; i++) {
             if (this.isVisible($(this.mapId).data(this.markers[i]).getPosition()))
               array.push(this.markers[i]);
           }
           break;
         case "visiblesInMap":
-          for (var i in this.markers) {
+          for (var i = 0, l = this.markers.length; i < l; i++) {
             if(this.getVisibleMarker(this.markers[i]))
               array.push(this.markers[i]);
           }
           break;
         case "group":
           if(name)
-            for (var i in this.markers) {
+            for (var i = 0, l = this.markers.length; i < l; i++) {
               if($(this.mapId).data(this.markers[i]).group == name)
                 array.push(this.markers[i]);
             }
           break;
         case "markers":
-          for (var i in this.markers) {
+          for (var i = 0, l = this.markers.length; i < l; i++) {
             var temp = $(this.mapId).data(this.markers[i]);
             array.push(temp);
           }
           break;
         default:
-          for (var i in this.markers) {
+          for (var i = 0, l = this.markers.length; i < l; i++) {
             var temp = $(this.mapId).data(this.markers[i]).getPosition().toUrlValue();
             array.push(temp);
           }
@@ -498,10 +723,10 @@
       }
       else if (marker.latitude && marker.longitude || marker.position) {
         var options = { map:this.map };
-        options.id      = marker.id;
-        options.group   = marker.group ? marker.group : this.opts.groupId; 
-        options.zIndex    = marker.zIndex ? marker.zIndex : 0;
-        options.zIndexOrg = marker.zIndexOrg ? marker.zIndexOrg : 0;
+        options.id       = marker.id;
+        options.group    = marker.group ? marker.group : this.opts.groupId; 
+        options.zIndex     = marker.zIndex ? marker.zIndex : 0;
+        options.zIndexOrg  = marker.zIndexOrg ? marker.zIndexOrg : 0;
 
         if (marker.visible == false)
           options.visible = marker.visible;
@@ -616,7 +841,7 @@
     },
 
     clearMarkers: function() {
-      for (var i in this.markers) {
+      for (var i = 0, l = this.markers.length; i < l; i++) {
         var markerId = this.markers[i];
         var marker   = $(this.mapId).data(markerId);
         var info     = $(this.mapId).data(markerId + 'info');

@@ -1,6 +1,11 @@
 Changelog
 =========
 
+1.0b7 (2011-12-06)
+------------------
+
+* removed the google maps version pin and updated jquery gomap to version 1.3.2
+
 1.0b6 (2011-05-09)
 ------------------
 

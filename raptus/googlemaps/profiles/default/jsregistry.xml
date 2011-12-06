@@ -2,7 +2,7 @@
 <object name="portal_javascripts" meta_type="JavaScripts Registry">
 
   <!-- http support  -->
-  <javascript id="http://maps.google.com/maps/api/js?v=3.3&amp;sensor=false"
+  <javascript id="http://maps.google.com/maps/api/js?sensor=false"
               compression="none"
               cookable="False"
               enabled="True"
@@ -10,7 +10,7 @@
               inline="False"/>
 
   <!-- https support  -->
-  <javascript id="https://maps-api-ssl.google.com/maps/api/js?v=3.3&amp;sensor=false"
+  <javascript id="https://maps-api-ssl.google.com/maps/api/js?sensor=false"
               compression="none"
               cookable="False"
               enabled="True"
@@ -24,5 +24,9 @@
               expression=""
               id="++resource++googlemaps.js"
               inline="False"/>
+
+  <!-- remove old js registrations -->
+  <javascript id="http://maps.google.com/maps/api/js?v=3.3&amp;sensor=false" remove="True"/>
+  <javascript id="https://maps.google.com/maps/api/js?v=3.3&amp;sensor=false" remove="True"/>
 
 </object>
