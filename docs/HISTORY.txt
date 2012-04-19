@@ -1,6 +1,11 @@
 Changelog
 =========
 
+1.0b9 (2012-04-19)
+------------------
+
+* fixed shadow placement in marker icon
+
 1.0b8 (2012-03-21)
 ------------------
 
