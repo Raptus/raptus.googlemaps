@@ -6,7 +6,7 @@ version = '1.0b9'
 setup(name='raptus.googlemaps',
       version=version,
       description="Provides jQuery googlemaps plugin and handles api keys",
-      long_description=open("README.txt").read() + "\n" +
+      long_description=open("README.rst").read() + "\n" +
                        open(os.path.join("docs", "HISTORY.txt")).read(),
       # Get more strings from http://www.python.org/pypi?%3Aaction=list_classifiers
       classifiers=[
@@ -16,7 +16,7 @@ setup(name='raptus.googlemaps',
       keywords='',
       author='Raptus AG',
       author_email='dev@raptus.com',
-      url='https://svn.plone.org/svn/collective/raptus.googlemaps',
+      url='https://github.com/Raptus/raptus.googlemaps',
       license='GPL',
       packages=find_packages(exclude=['ez_setup']),
       namespace_packages=['raptus'],
